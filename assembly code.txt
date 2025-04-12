@@ -1,0 +1,475 @@
+CONFIG FOSC = EXTRC   ; Oscillator Selection bits (RC oscillator)
+    CONFIG WDTE = OFF     ; Watchdog Timer Enable bit (WDT disabled)
+    CONFIG PWRTE = OFF    ; Power-up Timer Enable bit (PWRT disabled)
+    CONFIG BOREN = OFF    ; Brown-out Reset Enable bit (BOR disabled)
+    CONFIG LVP = OFF      ; Low-Voltage Programming disabled
+    CONFIG CPD = OFF      ; Data EEPROM Memory Code Protection off
+    CONFIG WRT = OFF      ; Flash Program Memory Write Enable bits off
+    CONFIG CP = OFF       ; Flash Program Memory Code Protection off
+
+    #include <xc.inc>
+
+;--------initialising-------------
+    PSECT start, CLASS = CODE, DELTA=2
+start:
+    PAGESEL MAIN
+    GOTO MAIN
+
+loop        equ 0x64  
+loop1       equ 0x65 
+loop2       equ 0x66 
+loop3       equ 0x67 
+loop4       equ 0x68
+display_data equ 0x21 
+use_delay   equ 0x34 
+Config_bits1 equ 0x35 
+Config_bits2 equ 0x36 
+Display1_config equ 0x60
+Display2_config equ 0x61
+Display3_config equ 0x62
+Display4_config equ 0x63 
+
+    PSECT CODE, DELTA=2
+;---------end initialising-------------
+
+MAIN:
+    BANKSEL TRISB
+    BCF TRISB, 0
+    BCF TRISB, 1
+    BANKSEL PORTB
+    BCF PORTB, 0
+    BCF PORTB, 1
+
+MAIN_LOOP:
+    call Hours_Min
+    call DISPLAY
+    GOTO MAIN_LOOP
+
+Hours_Min:
+    MOVLW 0B10000011
+    MOVWF Config_bits1
+    MOVLW 0B10000101 
+    MOVWF Config_bits2 
+    call Get_Data
+    return
+
+DISPLAY: 
+    BANKSEL TRISC 
+    CLRF TRISC 
+    BANKSEL PORTC 
+    CLRF PORTC 
+
+    ; Configure MAX6952 registers
+    MOVLW 0X04 
+    MOVWF 0X22 
+    MOVLW 0X81 
+    MOVWF 0X23 
+
+    MOVLW 0X01 
+    MOVWF 0X24 
+    MOVLW 0Xff 
+    MOVWF 0X25 
+
+    MOVLW 0X02 
+    MOVWF 0X26 
+    MOVLW 0Xff 
+    MOVWF 0X27 
+
+    MOVLW 0X07 
+    MOVWF 0X28 
+    MOVLW 0X00 
+    MOVWF 0X29 
+
+    ; Prepare display data
+    MOVLW 0X20 
+    MOVWF 0X2A 
+    MOVF Display4_config, W 
+    MOVWF 0X2B 
+
+    MOVLW 0X21 
+    MOVWF 0X2C 
+    MOVF Display3_config, W 
+    MOVWF 0X2D 
+
+    MOVLW 0X22 
+    MOVWF 0X2E 
+    MOVF Display2_config, W 
+    MOVWF 0X2F 
+
+    MOVLW 0X23 
+    MOVWF 0X30 
+    MOVF Display1_config, W 
+    MOVWF 0X31 
+
+    ; Send data to MAX6952
+    MOVLW 0X21
+    MOVWF FSR
+
+first8bit_loop1: 
+    DECFSZ loop4
+    goto Main_sub 
+    return  
+
+Main_sub:    
+    BSF PORTC, 1 
+    call bit_delay 
+    BCF PORTC, 2 
+    call bit_delay 
+    BCF PORTC, 1 
+    call bit_delay 
+
+    MOVLW 0X09 
+    MOVWF loop1 
+    INCF FSR 
+    MOVF INDF, W 
+    MOVWF display_data 
+    MOVLW 0X09 
+    MOVWF loop3 
+
+DISPLAY_MAIN: 
+    DECFSZ loop1 
+    goto first_word_rotation 
+    goto second8bit_loop2 
+
+first_word_rotation:
+    BCF PORTC, 2 
+    call bit_delay 
+    BTFSS display_data, 7 
+    goto zero1 
+
+    BSF PORTC, 0 
+    call bit_delay 
+    BSF PORTC, 2 
+    call bit_delay 
+    BCF PORTC, 2 
+    RLF display_data, F
+    goto DISPLAY_MAIN 
+
+zero1:
+    BCF PORTC, 0 
+    call bit_delay 
+    BSF PORTC, 2 
+    call bit_delay 
+    BCF PORTC, 2 
+    RLF display_data, F
+    goto DISPLAY_MAIN 
+
+second8bit_loop2: 
+    MOVLW 0X09 
+    MOVWF loop3 
+    INCF FSR 
+    MOVF INDF, W 
+    MOVWF display_data 
+
+MAIN2: 
+    DECFSZ loop3 
+    goto second_word_rotation 
+    goto first8bit_loop1 
+
+second_word_rotation:
+    BCF PORTC, 2 
+    call bit_delay 
+    BTFSS display_data, 7 
+    goto zero2 
+
+    BSF PORTC, 0 
+    call bit_delay 
+    BSF PORTC, 2 
+    call bit_delay 
+    BCF PORTC, 2 
+    RLF display_data, F
+    goto MAIN2 
+
+zero2:
+    BCF PORTC, 0 
+    call bit_delay 
+    BSF PORTC, 2 
+    call bit_delay 
+    BCF PORTC, 2 
+    RLF display_data, F
+    goto MAIN2 
+
+Get_Data:    
+    MOVLW 0X09 
+    MOVWF loop 
+    MOVLW 0X05 
+    MOVWF loop2 
+    MOVLW 0X09 
+    MOVWF loop4 
+    MOVLW 0X0f
+    MOVWF use_delay
+
+    BANKSEL TRISD  
+    CLRF TRISD 
+    BANKSEL PORTD 
+    CLRF PORTD 
+
+    BCF PORTD,1
+    call bit_delay    
+    BSF PORTD,0
+    BCF PORTD,2
+
+LOOP2: 
+    DECFSZ loop 
+    goto LOOP 
+    goto END2 
+
+LOOP:
+    BCF PORTD, 1 
+    call bit_delay
+    BTFSS Config_bits1, 0 
+    goto zero3 
+
+    BSF PORTD,2 
+    call bit_delay 
+    BSF PORTD,1 
+    call bit_delay 
+    RRF Config_bits1, F
+    goto LOOP2 
+
+zero3:
+    BCF PORTD,2 
+    call bit_delay 
+    BSF PORTD,1 
+    call bit_delay 
+    RRF Config_bits1, F
+    goto LOOP2 
+
+END2:
+    MOVLW 0X09 
+    MOVWF loop 
+
+    BANKSEL TRISD 
+    BSF TRISD,2 
+    BANKSEL PORTD
+
+LOOP4:
+    DECFSZ loop2
+    goto LOOP3
+    goto END4
+
+LOOP3:
+    BCF PORTD,1 
+    BTFSS PORTD,2
+    goto zero 
+
+    BSF Display1_config, 0 
+    call bit_delay
+    RRF Display1_config, F
+    goto END3
+
+zero:
+    BCF Display1_config, 0 
+    call bit_delay
+    RRF Display1_config, F
+END3:
+    BSF PORTD,1
+    goto LOOP4
+
+END4:
+    RRF Display1_config, F
+    call bit_delay
+    RRF Display1_config, F
+    call bit_delay
+    RRF Display1_config, F
+    call bit_delay
+    RRF Display1_config, F
+    call bit_delay
+    RRF Display1_config, F
+    call bit_delay
+
+    BCF Display1_config, 7 
+    BCF Display1_config, 6 
+    BSF Display1_config, 5 
+    BSF Display1_config, 4
+
+    MOVLW 0X05
+    MOVWF loop2
+
+LOOP4_1:
+    DECFSZ loop2
+    goto LOOP3_1
+    goto END4_1
+
+LOOP3_1:
+    BCF PORTD,1 
+    BTFSS PORTD,2 
+    goto zero_1 
+
+    BSF Display2_config, 0 
+    call bit_delay
+    RRF Display2_config, F
+    goto END3_1
+
+zero_1:
+    BCF Display2_config, 0 
+    call bit_delay
+    RRF Display2_config, F
+END3_1:
+    BSF PORTD,1
+    goto LOOP4_1
+
+END4_1:
+    RRF Display2_config, F
+    call bit_delay
+    RRF Display2_config, F
+    call bit_delay
+    RRF Display2_config, F
+    call bit_delay
+    RRF Display2_config, F
+    call bit_delay
+    RRF Display2_config, F
+    call bit_delay
+
+    BCF Display2_config, 7 
+    BCF Display2_config, 6 
+    BSF Display2_config, 5 
+    BSF Display2_config, 4
+
+    BCF PORTD,0
+    call bit_delay
+
+    MOVLW 0X09
+    MOVWF loop 
+    MOVLW 0X05
+    MOVWF loop2
+
+    BANKSEL TRISD
+    CLRF TRISD 
+    BANKSEL PORTD
+    CLRF PORTD 
+
+    BCF PORTD,1 
+    call bit_delay    
+    BSF PORTD,0 
+    BCF PORTD,2 
+
+LOOP8:
+    DECFSZ loop 
+    goto LOOP7 
+    goto END7 
+
+LOOP7:
+    BCF PORTD, 1 
+    call bit_delay
+    BTFSS Config_bits2, 0 
+    goto zero5 
+
+    BSF PORTD,2 
+    call bit_delay 
+    BSF PORTD,1 
+    call bit_delay 
+    RRF Config_bits2, F
+    goto LOOP8
+
+zero5:
+    BCF PORTD,2 
+    call bit_delay 
+    BSF PORTD,1 
+    call bit_delay 
+    RRF Config_bits2, F
+    goto LOOP8
+
+END7:
+    MOVLW 0X09 
+    MOVWF loop 
+
+    MOVLW 0X30 
+    MOVWF Display3_config
+    MOVLW 0X30 
+    MOVWF Display4_config
+
+    BANKSEL TRISD
+    BSF TRISD,2 
+    BANKSEL PORTD
+
+LOOP10:
+    DECFSZ loop2
+    goto LOOP9
+    goto END9
+
+LOOP9:
+    BCF PORTD,1
+    BTFSS PORTD,2
+    goto zero6 
+
+    BSF Display3_config, 0 
+    call bit_delay
+    RRF Display3_config, F
+    goto END8
+
+zero6:
+    BCF Display3_config, 0 
+    call bit_delay
+    RRF Display3_config, F
+END8:
+    BSF PORTD,1 
+    goto LOOP10 
+
+END9:
+    RRF Display3_config, F
+    call bit_delay
+    RRF Display3_config, F
+    call bit_delay
+    RRF Display3_config, F
+    call bit_delay
+    RRF Display3_config, F
+    call bit_delay
+    RRF Display3_config, F
+    call bit_delay
+
+    MOVLW 0X05
+    MOVWF loop2
+
+LOOP4_2:
+    DECFSZ loop2
+    goto LOOP3_2
+    goto END4_2
+
+LOOP3_2:
+    BCF PORTD,1
+    BTFSS PORTD,2
+    goto zero_2 
+
+    BSF Display4_config, 0 
+    call bit_delay
+    RRF Display4_config, F
+    goto END3_2
+
+zero_2:
+    BCF Display4_config, 0 
+    call bit_delay
+    RRF Display4_config, F
+END3_2:
+    BSF PORTD,1
+    goto LOOP4_2
+
+END4_2:
+    RRF Display4_config, F
+    call bit_delay
+    RRF Display4_config, F
+    call bit_delay
+    RRF Display4_config, F
+    call bit_delay
+    RRF Display4_config, F
+    call bit_delay
+    RRF Display4_config, F
+    call bit_delay
+
+    BCF Display4_config, 7 
+    BCF Display4_config, 6 
+    BSF Display4_config, 5 
+    BSF Display4_config, 4
+
+    BCF PORTD,0
+    return
+
+; Delay function
+bit_delay: 
+    DECFSZ use_delay
+    goto bit_delay 
+    MOVLW 0X0f 
+    MOVWF use_delay 
+    RETURN
+
+    END
